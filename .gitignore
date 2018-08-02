@@ -20,4 +20,3 @@ test.json
 pkg/
 dist/
 .vscode/
-vendor/
