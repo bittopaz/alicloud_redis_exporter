@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 
 	"encoding/json"
@@ -129,22 +130,18 @@ func readCache(id string) (result RedisInstance) {
 
 func getAuth() (defaultRegion string, accessKeyID string, accessKeySecret string) {
 	var a Auth
-	//curl path
-	path, _ := exec.LookPath("curl")
-
 	//get rolename
-	cmdGetRoleName := exec.Command(path,
-		"http://100.100.100.200/latest/meta-data/ram/security-credentials/")
-	roleNameRaw, err := cmdGetRoleName.Output()
+	cmdGetRoleName, err := http.Get("http://100.100.100.200/latest/meta-data/ram/security-credentials/")
+	HandleErr(err)
+	roleNameRaw, err := ioutil.ReadAll(cmdGetRoleName.Body)
+	cmdGetRoleName.Body.Close()
 	HandleErr(err)
 	a.RoleName = string(roleNameRaw)
-	cmdGetRoleName.Run()
 
 	//according to the rolename, get a json file.
-	cmdGetJSON := exec.Command(path,
-		"http://100.100.100.200/latest/meta-data/ram/security-credentials/"+a.RoleName)
-	jsonRaw, _ := cmdGetJSON.Output()
-	cmdGetJSON.Run()
+	cmdGetJSON, err := http.Get("http://100.100.100.200/latest/meta-data/ram/security-credentials/" + a.RoleName)
+	HandleErr(err)
+	jsonRaw, err := ioutil.ReadAll(cmdGetJSON.Body)
 
 	//convert json file to map
 	var roleMap map[string]*json.RawMessage
