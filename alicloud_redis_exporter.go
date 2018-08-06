@@ -153,6 +153,7 @@ func getAuth() (defaultRegion string, accessKeyID string, accessKeySecret string
 	cmdGetRoleName.Body.Close()
 	HandleErr(err)
 	a.RoleName = string(roleNameRaw)
+	println(a.RoleName)
 
 	//according to the rolename, get a json file.
 	cmdGetJSON, err := http.Get("http://100.100.100.200/latest/meta-data/ram/security-credentials/" + a.RoleName)
