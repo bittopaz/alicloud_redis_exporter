@@ -37,6 +37,7 @@ type Auth struct {
 	Region          string
 	AccessKeyID     string
 	AccessKeySecret string
+	SecurityToken   string
 }
 
 type RedisInstance struct {
@@ -57,8 +58,8 @@ type aliResponse struct {
 }
 
 func GetValue(InstanceId string, metric string) float64 {
-	defaultRegion, accessKeyID, accessKeySecret := getAuth()
-	client, err := cms.NewClientWithAccessKey(defaultRegion, accessKeyID, accessKeySecret)
+	defaultRegion, accessKeyID, accessKeySecret, securityToken := getAuth()
+	client, err := cms.NewClientWithStsToken(defaultRegion, accessKeyID, accessKeySecret, securityToken)
 	HandleErr(err)
 	request := cms.CreateQueryMetricLastRequest()
 	request.Project = "acs_kvstore"
@@ -129,7 +130,7 @@ func readCache(id string) (result RedisInstance) {
 	return result
 }
 
-func getAuth() (defaultRegion string, accessKeyID string, accessKeySecret string) {
+func getAuth() (defaultRegion string, accessKeyID string, accessKeySecret string, securityToken string) {
 	var a Auth
 	//get rolename
 	cmdGetRoleName, err := http.Get("http://100.100.100.200/latest/meta-data/ram/security-credentials/")
@@ -151,8 +152,9 @@ func getAuth() (defaultRegion string, accessKeyID string, accessKeySecret string
 	//extract related content from map
 	json.Unmarshal(*roleMap["AccessKeyId"], &a.AccessKeyID)
 	json.Unmarshal(*roleMap["AccessKeySecret"], &a.AccessKeySecret)
+	json.Unmarshal(*roleMap["SecurityToken"], &a.SecurityToken)
 	a.Region = "cn-shanghai"
-	return a.Region, a.AccessKeyID, a.AccessKeySecret
+	return a.Region, a.AccessKeyID, a.AccessKeySecret, a.SecurityToken
 }
 
 func HandleErr(err error) {
