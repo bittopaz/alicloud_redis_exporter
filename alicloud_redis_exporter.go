@@ -11,6 +11,7 @@ import (
 
 	"time"
 
+	"github.com/aliyun/alibaba-cloud-sdk-go/sdk"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/cms"
 	"github.com/patrickmn/go-cache"
 	"github.com/prometheus/common/log"
@@ -59,14 +60,22 @@ type aliResponse struct {
 
 func GetValue(InstanceId string, metric string) float64 {
 	defaultRegion, accessKeyID, accessKeySecret, securityToken := getAuth()
-	client, err := cms.NewClientWithStsToken(defaultRegion, accessKeyID, accessKeySecret, securityToken)
+	client, err := sdk.NewClientWithStsToken(
+		defaultRegion,
+		accessKeyID,
+		accessKeySecret,
+		securityToken,
+	)
+	cmsClient := cms.Client{
+		Client: *client,
+	}
 	HandleErr(err)
 	request := cms.CreateQueryMetricLastRequest()
 	request.Project = "acs_kvstore"
 	request.Dimensions = fmt.Sprintf("{\"instanceId\":\"%s\"}", InstanceId)
 	request.Metric = metric
 	request.Domain = "metrics.cn-shanghai.aliyuncs.com"
-	response, err := client.QueryMetricLast(request)
+	response, err := cmsClient.QueryMetricLast(request)
 	HandleErr(err)
 	var re aliResponse
 	HandleErr(json.Unmarshal([]byte(strings.Trim(response.Datapoints, "[]")), &re))
