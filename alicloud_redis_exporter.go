@@ -60,7 +60,6 @@ type aliResponse struct {
 
 func GetValue(InstanceId string, metric string) float64 {
 	defaultRegion, accessKeyID, accessKeySecret, securityToken := getAuth()
-	println("0")
 	client, err := sdk.NewClientWithStsToken(
 		defaultRegion,
 		accessKeyID,
@@ -70,7 +69,6 @@ func GetValue(InstanceId string, metric string) float64 {
 	cmsClient := cms.Client{
 		Client: *client,
 	}
-	println("1")
 	HandleErr(err)
 	request := cms.CreateQueryMetricLastRequest()
 	request.Project = "acs_kvstore"
@@ -78,12 +76,9 @@ func GetValue(InstanceId string, metric string) float64 {
 	request.Metric = metric
 	request.Domain = "metrics.cn-shanghai.aliyuncs.com"
 	response, err := cmsClient.QueryMetricLast(request)
-	println("2")
 	HandleErr(err)
 	var re aliResponse
-	println(response.Message)
 	HandleErr(json.Unmarshal([]byte(strings.Trim(response.Datapoints, "[]")), &re))
-	println("3")
 	time.Sleep(intervals)
 	return re.Average
 }
@@ -153,7 +148,6 @@ func getAuth() (defaultRegion string, accessKeyID string, accessKeySecret string
 	cmdGetRoleName.Body.Close()
 	HandleErr(err)
 	a.RoleName = string(roleNameRaw)
-	println(a.RoleName)
 
 	//according to the rolename, get a json file.
 	cmdGetJSON, err := http.Get("http://100.100.100.200/latest/meta-data/ram/security-credentials/" + a.RoleName)
