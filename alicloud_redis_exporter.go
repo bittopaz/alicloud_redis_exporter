@@ -64,7 +64,7 @@ func GetValue(InstanceId string, metric string) float64 {
 	request.Project = "acs_kvstore"
 	request.Dimensions = fmt.Sprintf("{\"instanceId\":\"%s\"}", InstanceId)
 	request.Metric = metric
-	request.Domain = "alidns.aliyuncs.com"
+	request.Domain = "cms.cn-shanghai.aliyuncs.com"
 	response, err := client.QueryMetricLast(request)
 	HandleErr(err)
 	var re aliResponse
