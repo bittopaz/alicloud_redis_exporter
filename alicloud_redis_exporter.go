@@ -81,7 +81,7 @@ func GetValue(InstanceId string, metric string) float64 {
 	println("2")
 	HandleErr(err)
 	var re aliResponse
-	println(response.Datapoints)
+	println(response.Message)
 	HandleErr(json.Unmarshal([]byte(strings.Trim(response.Datapoints, "[]")), &re))
 	println("3")
 	time.Sleep(intervals)
