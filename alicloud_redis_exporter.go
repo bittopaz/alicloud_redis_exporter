@@ -60,6 +60,7 @@ type aliResponse struct {
 
 func GetValue(InstanceId string, metric string) float64 {
 	defaultRegion, accessKeyID, accessKeySecret, securityToken := getAuth()
+	println("0")
 	client, err := sdk.NewClientWithStsToken(
 		defaultRegion,
 		accessKeyID,
@@ -69,6 +70,7 @@ func GetValue(InstanceId string, metric string) float64 {
 	cmsClient := cms.Client{
 		Client: *client,
 	}
+	println("1")
 	HandleErr(err)
 	request := cms.CreateQueryMetricLastRequest()
 	request.Project = "acs_kvstore"
@@ -76,6 +78,7 @@ func GetValue(InstanceId string, metric string) float64 {
 	request.Metric = metric
 	request.Domain = "metrics.cn-shanghai.aliyuncs.com"
 	response, err := cmsClient.QueryMetricLast(request)
+	println("2")
 	HandleErr(err)
 	var re aliResponse
 	HandleErr(json.Unmarshal([]byte(strings.Trim(response.Datapoints, "[]")), &re))
