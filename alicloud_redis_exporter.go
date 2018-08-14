@@ -1,15 +1,15 @@
 package main
 
 import (
-	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
-	"os/exec"
-	"strings"
 
 	"encoding/json"
 
 	"time"
 
+	"github.com/aliyun/alibaba-cloud-sdk-go/sdk"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/cms"
 	"github.com/patrickmn/go-cache"
 	"github.com/prometheus/common/log"
@@ -36,6 +36,7 @@ type Auth struct {
 	Region          string
 	AccessKeyID     string
 	AccessKeySecret string
+	SecurityToken   string
 }
 
 type RedisInstance struct {
@@ -52,23 +53,38 @@ type RedisInstance struct {
 }
 
 type aliResponse struct {
-	Average float64
+	InstanceId string  `json:"instanceId"`
+	Average    float64 `json:"Average"`
 }
 
-func GetValue(InstanceId string, metric string) float64 {
-	defaultRegion, accessKeyID, accessKeySecret := getAuth()
-	client, err := cms.NewClientWithAccessKey(defaultRegion, accessKeyID, accessKeySecret)
+func GetMetricMap(idList []string, metric string) map[string]float64 {
+	result := make(map[string]float64)
+	defaultRegion, accessKeyID, accessKeySecret, securityToken := getAuth()
+	client, err := sdk.NewClientWithStsToken(
+		defaultRegion,
+		accessKeyID,
+		accessKeySecret,
+		securityToken,
+	)
+	cmsClient := cms.Client{
+		Client: *client,
+	}
 	HandleErr(err)
 	request := cms.CreateQueryMetricLastRequest()
 	request.Project = "acs_kvstore"
-	request.Dimensions = fmt.Sprintf("{\"instanceId\":\"%s\"}", InstanceId)
 	request.Metric = metric
-	response, err := client.QueryMetricLast(request)
+	request.Domain = "metrics.cn-shanghai.aliyuncs.com"
+	response, err := cmsClient.QueryMetricLast(request)
 	HandleErr(err)
-	var re aliResponse
-	HandleErr(json.Unmarshal([]byte(strings.Trim(response.Datapoints, "[]")), &re))
+	var re []aliResponse
+	HandleErr(json.Unmarshal([]byte(response.Datapoints), &re))
+	for _, v := range re {
+		if stringInSlice(v.InstanceId, idList) {
+			result[v.InstanceId] = v.Average
+		}
+	}
 	time.Sleep(intervals)
-	return re.Average
+	return result
 }
 
 func checkInstanceList(id string) {
@@ -81,32 +97,31 @@ func checkInstanceList(id string) {
 
 func StoreData() {
 	var redisList []RedisInstance
-	instanceList := c.Items()
-	for id := range instanceList {
-		if id == "redislist" {
-			continue
-		}
-		memoryUsageValue := GetValue(id, "Memoryusage")
-		connectionValue := GetValue(id, "ConnectionUsage")
-		inratioValue := GetValue(id, "IntranetInRatio")
-		outratioValue := GetValue(id, "IntranetOutRatio")
-		intranetInValue := GetValue(id, "IntranetIn")
-		intranetOutValue := GetValue(id, "IntranetOut")
-		failedCountValue := GetValue(id, "FailedCount")
-		cpuUsageValue := GetValue(id, "CpuUsage")
-		usedMemoryValue := GetValue(id, "UsedMemory")
-
+	var instanceList []string
+	for id := range c.Items() {
+		instanceList = append(instanceList, id)
+	}
+	memoryUsageMap := GetMetricMap(instanceList, "Memoryusage")
+	connectionMap := GetMetricMap(instanceList, "ConnectionUsage")
+	inratioMap := GetMetricMap(instanceList, "IntranetInRatio")
+	outratioMap := GetMetricMap(instanceList, "IntranetOutRatio")
+	intranetInMap := GetMetricMap(instanceList, "IntranetIn")
+	intranetOutMap := GetMetricMap(instanceList, "IntranetOut")
+	failedCountMap := GetMetricMap(instanceList, "FailedCount")
+	cpuUsageMap := GetMetricMap(instanceList, "CpuUsage")
+	usedMemoryMap := GetMetricMap(instanceList, "UsedMemory")
+	for _, id := range instanceList {
 		redis := RedisInstance{
 			Id:               id,
-			MemoryUsage:      memoryUsageValue,
-			ConnectionUsage:  connectionValue,
-			IntranetInRatio:  inratioValue,
-			IntranetOutRatio: outratioValue,
-			IntranetIn:       intranetInValue,
-			IntranetOut:      intranetOutValue,
-			FailedCount:      failedCountValue,
-			CpuUsage:         cpuUsageValue,
-			UsedMemory:       usedMemoryValue,
+			MemoryUsage:      memoryUsageMap[id],
+			ConnectionUsage:  connectionMap[id],
+			IntranetInRatio:  inratioMap[id],
+			IntranetOutRatio: outratioMap[id],
+			IntranetIn:       intranetInMap[id],
+			IntranetOut:      intranetOutMap[id],
+			FailedCount:      failedCountMap[id],
+			CpuUsage:         cpuUsageMap[id],
+			UsedMemory:       usedMemoryMap[id],
 		}
 		redisList = append(redisList, redis)
 	}
@@ -127,24 +142,20 @@ func readCache(id string) (result RedisInstance) {
 	return result
 }
 
-func getAuth() (defaultRegion string, accessKeyID string, accessKeySecret string) {
+func getAuth() (defaultRegion string, accessKeyID string, accessKeySecret string, securityToken string) {
 	var a Auth
-	//curl path
-	path, _ := exec.LookPath("curl")
-
 	//get rolename
-	cmdGetRoleName := exec.Command(path,
-		"http://100.100.100.200/latest/meta-data/ram/security-credentials/")
-	roleNameRaw, err := cmdGetRoleName.Output()
+	cmdGetRoleName, err := http.Get("http://100.100.100.200/latest/meta-data/ram/security-credentials/")
+	HandleErr(err)
+	roleNameRaw, err := ioutil.ReadAll(cmdGetRoleName.Body)
+	cmdGetRoleName.Body.Close()
 	HandleErr(err)
 	a.RoleName = string(roleNameRaw)
-	cmdGetRoleName.Run()
 
 	//according to the rolename, get a json file.
-	cmdGetJSON := exec.Command(path,
-		"http://100.100.100.200/latest/meta-data/ram/security-credentials/"+a.RoleName)
-	jsonRaw, _ := cmdGetJSON.Output()
-	cmdGetJSON.Run()
+	cmdGetJSON, err := http.Get("http://100.100.100.200/latest/meta-data/ram/security-credentials/" + a.RoleName)
+	HandleErr(err)
+	jsonRaw, err := ioutil.ReadAll(cmdGetJSON.Body)
 
 	//convert json file to map
 	var roleMap map[string]*json.RawMessage
@@ -153,8 +164,27 @@ func getAuth() (defaultRegion string, accessKeyID string, accessKeySecret string
 	//extract related content from map
 	json.Unmarshal(*roleMap["AccessKeyId"], &a.AccessKeyID)
 	json.Unmarshal(*roleMap["AccessKeySecret"], &a.AccessKeySecret)
+	json.Unmarshal(*roleMap["SecurityToken"], &a.SecurityToken)
 	a.Region = "cn-shanghai"
-	return a.Region, a.AccessKeyID, a.AccessKeySecret
+	return a.Region, a.AccessKeyID, a.AccessKeySecret, a.SecurityToken
+}
+
+func removeFromSlice(s []string, target string) []string {
+	for i, v := range s {
+		if v == target {
+			s = append(s[:i], s[i+1:]...)
+		}
+	}
+	return s
+}
+
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
 }
 
 func HandleErr(err error) {

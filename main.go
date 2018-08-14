@@ -44,7 +44,7 @@ func main() {
 	})
 	go func() {
 		for {
-			time.Sleep(30 * time.Second)
+			time.Sleep(60 * time.Second)
 			log.Infof("Reading data from alicloud...")
 			StoreData()
 		}
